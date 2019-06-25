@@ -1,0 +1,41 @@
+= Gravitee.io ingest plugin for ElasticSearch
+
+== Description
+
+This plugin allow you to enhance the ElasticSearch data schema as the API name / application name.
+
+The plugin get these additional data from the Gravitee.io Management REST API.
+A cache mechanism allows to call the API only once as these data not change often. Default time to live is set to 24 hours.
+
+== Configuration
+
+=== From Gravitee.io
+
+As a new ES processor is available, we have to enable it from the gateway configuration ont the `gravitee.yml`:
+
+```yml
+gravitee.reporters.elasticsearch.pipeline.plugins.ingest=gravitee
+```
+
+=== From Elasticsearch
+
+First of all we have to install the plugin on ElasticSearch:
+
+```bash
+/usr/share/elasticsearch/bin/elasticsearch-plugin install file:///path_to_the_plugin/gravitee-elasticsearch-ingest-plugin-${version}.zip
+```
+
+And configure the endpoint information on the `elasticsearch.yml`:
+
+```yml
+ingest.gravitee:
+  endpoint: https://gravitee_management_host/management
+  user: admin
+  password: admin
+  cache:
+    maxElement: 1000
+    # 24 hours
+    ttl: 86400
+```
+
+By default the plugin will try to call the REST API on `http://localhost:8083/management` with user `admin` and password `admin`.
