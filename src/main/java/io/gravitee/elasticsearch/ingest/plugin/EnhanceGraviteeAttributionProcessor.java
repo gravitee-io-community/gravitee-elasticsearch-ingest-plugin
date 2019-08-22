@@ -21,10 +21,12 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.ssl.SSLContextBuilder;
 import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.Logger;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.cache.Cache;
 import org.elasticsearch.common.cache.CacheBuilder;
 import org.elasticsearch.common.logging.Loggers;
@@ -38,6 +40,7 @@ import java.util.Map;
 
 import static java.lang.String.format;
 import static java.util.Base64.getEncoder;
+import static org.elasticsearch.common.Strings.isEmpty;
 import static org.elasticsearch.common.unit.TimeValue.timeValueSeconds;
 import static org.elasticsearch.ingest.ConfigurationUtils.readStringProperty;
 
@@ -77,7 +80,7 @@ public class EnhanceGraviteeAttributionProcessor extends AbstractProcessor {
         final SSLContextBuilder builder = new SSLContextBuilder();
         builder.loadTrustMaterial(null, new TrustSelfSignedStrategy());
         final SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(builder.build());
-        this.httpClient = HttpClients.custom().setSSLSocketFactory(sslsf).build();;
+        this.httpClient = HttpClients.custom().setSSLSocketFactory(sslsf).build();
     }
 
     @Override
@@ -123,6 +126,7 @@ public class EnhanceGraviteeAttributionProcessor extends AbstractProcessor {
                 }
                 name = AccessController.doPrivileged((PrivilegedAction<String>) () -> {
                     try {
+                        LOGGER.info("Enhancing field '{}' for id '{}'...", enhancedFieldName, id);
                         return httpClient.execute(apiRequest, response -> {
                             int status = response.getStatusLine().getStatusCode();
                             if (status == 200) {
@@ -130,13 +134,13 @@ public class EnhanceGraviteeAttributionProcessor extends AbstractProcessor {
                             } else {
                                 LOGGER.error(format("Error while trying to enhance gravitee attribute: Status[%s] - %s",
                                         status, EntityUtils.toString(response.getEntity())));
-                                return null;
+                                return "";
                             }
                         });
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        LOGGER.error("Error while trying to enhance gravitee attribute", e);
+                        return "";
                     }
-                    return null;
                 });
             }
             cache.put(id, name);
