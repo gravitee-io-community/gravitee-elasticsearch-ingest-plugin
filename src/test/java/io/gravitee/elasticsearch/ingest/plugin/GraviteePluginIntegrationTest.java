@@ -26,6 +26,7 @@ import org.elasticsearch.plugins.PluginInfo;
 import org.elasticsearch.test.ESIntegTestCase;
 import org.junit.Before;
 import org.junit.ClassRule;
+import org.mockito.Matchers;
 
 import java.util.*;
 
@@ -82,7 +83,7 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         processor.execute(ingestDocument);
         Map<String, Object> data = ingestDocument.getSourceAndMetadata();
         assertThat(data, hasKey("api-name"));
-        assertThat(data.get("api-name"), nullValue());
+        assertThat(data.get("api-name"), is(""));
     }
 
     public void testThatProcessorWorks() throws Exception {
