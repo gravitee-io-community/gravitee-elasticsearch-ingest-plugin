@@ -17,6 +17,7 @@ package io.gravitee.elasticsearch.ingest.plugin;
 
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.junit.WireMockRule;
+import io.gravitee.elasticsearch.ingest.plugin.EnhanceGraviteeAttributionProcessor.Factory;
 import org.elasticsearch.action.admin.cluster.node.info.NodeInfo;
 import org.elasticsearch.action.admin.cluster.node.info.NodesInfoResponse;
 import org.elasticsearch.ingest.IngestDocument;
@@ -26,7 +27,6 @@ import org.elasticsearch.plugins.PluginInfo;
 import org.elasticsearch.test.ESIntegTestCase;
 import org.junit.Before;
 import org.junit.ClassRule;
-import org.mockito.Matchers;
 
 import java.util.*;
 
@@ -46,14 +46,23 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
     @ClassRule
     public static final WireMockRule wireMockRule = new WireMockRule(wireMockConfig().dynamicPort());
 
+    private EnhanceGraviteeAttributionProcessor processor;
+
     @Override
     protected Collection<Class<? extends Plugin>> nodePlugins() {
         return singleton(IngestGraviteePlugin.class);
     }
 
     @Before
-    public void init() {
+    public void init() throws Exception {
         resetAllRequests();
+
+        final String tag = randomAsciiAlphanumOfLength(10);
+        final Map<String, Object> config = new HashMap();
+        config.put("apiField", "api");
+        config.put("applicationField", "application");
+        final Factory factory = new Factory(new EndpointConfiguration.Builder(wireMockRule.baseUrl()).build());
+        processor = factory.create(Collections.emptyMap(), tag, config);
     }
 
     public void testPluginIsLoaded() {
@@ -70,23 +79,40 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         }
     }
 
-    public void testThatProcessorNotWorks() throws Exception {
+    public void testThatProcessorFillsEnhancedFieldsWhenOriginalAreNotPresent() {
+        final Map<String, Object> document = new HashMap<>();
+        IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
+        processor.execute(ingestDocument);
+        Map<String, Object> data = ingestDocument.getSourceAndMetadata();
+        assertThat(data, hasKey("api-name"));
+        assertThat(data.get("api-name"), is(""));
+
+        assertThat(data, hasKey("application-name"));
+        assertThat(data.get("application-name"), is(""));
+    }
+
+    public void testThatProcessorNotWorks() {
         stubFor(WireMock.get(urlEqualTo("/apis/123"))
+                .willReturn(aResponse()
+                        .withStatus(404)));
+        stubFor(WireMock.get(urlEqualTo("/applications/321"))
                 .willReturn(aResponse()
                         .withStatus(404)));
 
         final Map<String, Object> document = new HashMap<>();
         document.put("api", "123");
+        document.put("application", "321");
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        EnhanceGraviteeAttributionProcessor processor = new EnhanceGraviteeAttributionProcessor(randomAsciiAlphanumOfLength(10),
-                new EndpointConfiguration.Builder(wireMockRule.baseUrl()).build(), "api", "application");
         processor.execute(ingestDocument);
         Map<String, Object> data = ingestDocument.getSourceAndMetadata();
         assertThat(data, hasKey("api-name"));
         assertThat(data.get("api-name"), is(""));
+
+        assertThat(data, hasKey("application-name"));
+        assertThat(data.get("application-name"), is(""));
     }
 
-    public void testThatProcessorWorks() throws Exception {
+    public void testThatProcessorWorks() {
         stubFor(WireMock.get(urlEqualTo("/apis/123"))
                 .willReturn(aResponse()
                         .withStatus(200)
@@ -100,8 +126,6 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         document.put("api", "123");
         document.put("application", "321");
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        EnhanceGraviteeAttributionProcessor processor = new EnhanceGraviteeAttributionProcessor(randomAsciiAlphanumOfLength(10),
-                new EndpointConfiguration.Builder(wireMockRule.baseUrl()).build(), "api", "application");
         processor.execute(ingestDocument);
         Map<String, Object> data = ingestDocument.getSourceAndMetadata();
         assertThat(data, hasKey("api-name"));
@@ -114,7 +138,7 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         verify(1, getRequestedFor(urlEqualTo("/applications/321")));
     }
 
-    public void testThatProcessorCachingWorks() throws Exception {
+    public void testThatProcessorCachingWorks() {
         stubFor(WireMock.get(urlEqualTo("/apis/123"))
                 .willReturn(aResponse()
                         .withStatus(200)
@@ -123,8 +147,6 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         final Map<String, Object> document = new HashMap<>();
         document.put("api", "123");
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        EnhanceGraviteeAttributionProcessor processor = new EnhanceGraviteeAttributionProcessor(randomAsciiAlphanumOfLength(10),
-                new EndpointConfiguration.Builder(wireMockRule.baseUrl()).build(), "api", "application");
         processor.execute(ingestDocument);
         Map<String, Object> data = ingestDocument.getSourceAndMetadata();
         assertThat(data, hasKey("api-name"));
@@ -137,4 +159,5 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         verify(1, getRequestedFor(urlEqualTo("/apis/123")));
         verify(0, getRequestedFor(urlEqualTo("/applications/321")));
     }
+
 }

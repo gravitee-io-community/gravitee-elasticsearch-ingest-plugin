@@ -42,3 +42,13 @@ ingest.gravitee:
 ```
 
 By default the plugin will try to call the REST API on `http://localhost:8083/management` with username `admin` and password `admin`.
+
+== Extension points
+
+By default, this plugin provides a Processor to enhance Ingest documents with both API and application names. If you need to enhance Ingest documents with more than those properties, you can extend this plugin to add extra processors:
+
+- implementing extra `io.gravitee.elasticsearch.ingest.plugin.IngestDocumentEnhancer` responsible for enhancing Ingest document with some new properties.
+
+- extending the `io.gravitee.elasticsearch.ingest.plugin.EnhanceGraviteeAttributionProcessor.Factory` class and overriding `initializeDocumentEnhancers()` method to initialize extra `IngestDocumentEnhancer`.
+
+- extending the `io.gravitee.elasticsearch.ingest.plugin.IngestGraviteePlugin` class and overriding `buildProcessorFactory()` to initialize the processor factory.

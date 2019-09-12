@@ -15,27 +15,32 @@
  */
 package io.gravitee.elasticsearch.ingest.plugin;
 
-import org.apache.logging.log4j.Logger;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.ingest.Processor;
 import org.elasticsearch.plugins.IngestPlugin;
 import org.elasticsearch.plugins.Plugin;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
+import java.util.*;
 
+import static io.gravitee.elasticsearch.ingest.plugin.EnhanceGraviteeAttributionProcessor.TYPE;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonMap;
 import static org.elasticsearch.common.settings.Setting.*;
 import static org.elasticsearch.common.settings.Setting.Property.NodeScope;
 
 /**
+ * An {@link IngestPlugin} implementation for Gravitee requests index enhancement. This implementation retrieves an
+ * {@link EndpointConfiguration} to allow the underneath {@link Processor} to access to the Gravitee Management API,
+ * potentially through a Gravitee gateway.
+ *
+ * This class is extensible to change the {@link Processor} implementation through the
+ * {@link #buildProcessorFactory(EndpointConfiguration)} method. By default, a {@link EnhanceGraviteeAttributionProcessor}
+ * instance is used.
+ *
  * @author Azize ELAMRANI (azize.elamrani at graviteesource.com)
  * @author GraviteeSource Team
+ * @see EnhanceGraviteeAttributionProcessor
+ * @see EnhanceGraviteeAttributionProcessor.Factory
  */
 public class IngestGraviteePlugin extends Plugin implements IngestPlugin {
 
@@ -73,7 +78,17 @@ public class IngestGraviteePlugin extends Plugin implements IngestPlugin {
                         .cacheTtl(CACHE_TTL.get(parameters.env.settings()))
                         .headers(HEADERS_KEY.get(parameters.env.settings()))
                         .build();
-        return singletonMap(EnhanceGraviteeAttributionProcessor.TYPE,
-                new EnhanceGraviteeAttributionProcessor.Factory(endpointConfiguration));
+        return singletonMap(TYPE, buildProcessorFactory(endpointConfiguration));
     }
+
+    /**
+     * Builds the {@link Processor.Factory} instance that will be used by {@link #getProcessors(Processor.Parameters)}
+     * to initialize the processor used by this Ingest plugin.
+     * @param endpointConfiguration the Management API endpoint configuration.
+     * @return the factory to be used to initialize Ingest processor.
+     */
+    protected Processor.Factory buildProcessorFactory(EndpointConfiguration endpointConfiguration) {
+        return new EnhanceGraviteeAttributionProcessor.Factory(endpointConfiguration);
+    }
+
 }
