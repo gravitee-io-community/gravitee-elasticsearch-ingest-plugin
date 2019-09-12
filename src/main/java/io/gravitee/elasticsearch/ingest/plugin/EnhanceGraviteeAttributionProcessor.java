@@ -15,72 +15,35 @@
  */
 package io.gravitee.elasticsearch.ingest.plugin;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.http.HttpHeaders;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
-import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.ssl.SSLContextBuilder;
-import org.apache.http.util.EntityUtils;
-import org.apache.logging.log4j.Logger;
-import org.elasticsearch.common.Strings;
-import org.elasticsearch.common.cache.Cache;
-import org.elasticsearch.common.cache.CacheBuilder;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.ingest.AbstractProcessor;
 import org.elasticsearch.ingest.IngestDocument;
 import org.elasticsearch.ingest.Processor;
 
-import java.io.IOException;
-import java.security.*;
-import java.util.Map;
+import java.util.*;
 
-import static java.lang.String.format;
-import static java.util.Base64.getEncoder;
-import static org.elasticsearch.common.Strings.isEmpty;
-import static org.elasticsearch.common.unit.TimeValue.timeValueSeconds;
 import static org.elasticsearch.ingest.ConfigurationUtils.readStringProperty;
 
 /**
+ * A {@link org.elasticsearch.ingest.Processor} implementation that uses a list of {@link IngestDocumentEnhancer}s on
+ * each {@link #execute(IngestDocument) execution}. Order of the {@link IngestDocumentEnhancer}s may be important, as
+ * some enhancers may depend on the result of the previous ones.
+ *
  * @author Azize ELAMRANI (azize.elamrani at graviteesource.com)
  * @author GraviteeSource Team
+ * @see IngestDocumentEnhancer
  */
 public class EnhanceGraviteeAttributionProcessor extends AbstractProcessor {
 
-    static final String TYPE = "gravitee-elasticsearch-ingest-plugin";
-    private static final Logger LOGGER = Loggers.getLogger(EnhanceGraviteeAttributionProcessor.class, TYPE);
+    public static final String TYPE = "gravitee-elasticsearch-ingest-plugin";
 
-    private static final String UNKNOWN_APPLICATION = "1";
-    private static final String UNKNOWN_APPLICATION_NAME = "Unknown";
+    private final Collection<IngestDocumentEnhancer> documentEnhancers;
 
-    private final String apiField, applicationField;
-    private final EndpointConfiguration endpointConfiguration;
-    private final ObjectMapper mapper;
-    private final CloseableHttpClient httpClient;
-    private final Cache<String, String> cache;
-
-    EnhanceGraviteeAttributionProcessor(String tag, EndpointConfiguration endpointConfiguration, String apiField, String applicationField) throws Exception {
+    EnhanceGraviteeAttributionProcessor(String tag, Collection<IngestDocumentEnhancer> documentEnhancers) {
         super(tag);
-        this.endpointConfiguration = endpointConfiguration;
-        this.apiField = apiField;
-        this.applicationField = applicationField;
-        final CacheBuilder<String, String> cacheBuilder = CacheBuilder.builder();
-        if (endpointConfiguration.getCacheTtl() > 0) {
-            cacheBuilder.setExpireAfterWrite(timeValueSeconds(endpointConfiguration.getCacheTtl()));
+        if (documentEnhancers == null || documentEnhancers.isEmpty()) {
+            throw new IllegalStateException("Cannot initialize processor without document enhancer");
         }
-        if (endpointConfiguration.getCacheMaxElement() > 0) {
-            cacheBuilder.setMaximumWeight(endpointConfiguration.getCacheMaxElement());
-        }
-        this.cache = cacheBuilder.build();
-        this.mapper = new ObjectMapper();
-
-        final SSLContextBuilder builder = new SSLContextBuilder();
-        builder.loadTrustMaterial(null, new TrustSelfSignedStrategy());
-        final SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(builder.build());
-        this.httpClient = HttpClients.custom().setSSLSocketFactory(sslsf).build();
+        this.documentEnhancers = Collections.unmodifiableCollection(documentEnhancers);
     }
 
     @Override
@@ -90,78 +53,72 @@ public class EnhanceGraviteeAttributionProcessor extends AbstractProcessor {
 
     @Override
     public IngestDocument execute(IngestDocument ingestDocument) {
-        if (apiField != null) {
-            final String api = ingestDocument.getFieldValue(apiField, String.class, true);
-            if (api != null) {
-                enhanceDocument(ingestDocument, "/apis/", api, "name", "api-name");
-            }
-        }
-        if (applicationField != null) {
-            final String application = ingestDocument.getFieldValue(applicationField, String.class, true);
-            if (application != null) {
-                enhanceDocument(ingestDocument, "/applications/", application, "name", "application-name");
-            }
-        }
+        this.documentEnhancers.forEach(documentEnhancer -> documentEnhancer.enhanceDocument(ingestDocument));
         return ingestDocument;
     }
 
-    private void enhanceDocument(final IngestDocument ingestDocument, final String path, final String id,
-                                 final String attribute, final String enhancedFieldName) {
-        String name = cache.get(id);
-        if (name == null) {
-            if (UNKNOWN_APPLICATION.equals(id)) {
-                name = UNKNOWN_APPLICATION_NAME;
-            } else {
-                final HttpGet apiRequest = new HttpGet(endpointConfiguration.getEndpoint() + path + id);
-                apiRequest.setHeader(HttpHeaders.AUTHORIZATION, "Basic " +
-                        getEncoder().encodeToString((endpointConfiguration.getUsername() + ':' + endpointConfiguration.getPassword()).getBytes()));
-                apiRequest.setHeader(HttpHeaders.ACCEPT, "application/json");
-                if (endpointConfiguration.getHeaders() != null && !endpointConfiguration.getHeaders().isEmpty()) {
-                    endpointConfiguration.getHeaders().stream()
-                            .filter((header) -> header.contains(":"))
-                            .forEach((header) -> {
-                                final String[] splitHeader = header.split(":");
-                                apiRequest.setHeader(splitHeader[0].trim(), splitHeader[1].trim());
-                            });
-                }
-                name = AccessController.doPrivileged((PrivilegedAction<String>) () -> {
-                    try {
-                        LOGGER.info("Enhancing field '{}' for id '{}'...", enhancedFieldName, id);
-                        return httpClient.execute(apiRequest, response -> {
-                            int status = response.getStatusLine().getStatusCode();
-                            if (status == 200) {
-                                return (String) mapper.readValue(EntityUtils.toString(response.getEntity()), Map.class).get(attribute);
-                            } else {
-                                LOGGER.error(format("Error while trying to enhance gravitee attribute: Status[%s] - %s",
-                                        status, EntityUtils.toString(response.getEntity())));
-                                return "";
-                            }
-                        });
-                    } catch (IOException e) {
-                        LOGGER.error("Error while trying to enhance gravitee attribute", e);
-                        return "";
-                    }
-                });
-            }
-            cache.put(id, name);
-        }
-        ingestDocument.setFieldValue(enhancedFieldName, name);
-    }
+    /**
+     * A {@link EnhanceGraviteeAttributionProcessor} factory. By default, it initializes 2 {@link IngestDocumentEnhancer}s
+     * to add API and application names in document.
+     *
+     * This factory is extensible to initialize more {@link IngestDocumentEnhancer}s than those defined by default, or
+     * to completely replace the default ones, using {@link #initializeDocumentEnhancers(String, Map)}.
+     */
+    public static class Factory implements Processor.Factory {
 
-    public static final class Factory implements Processor.Factory {
+        protected static final String PIPELINE_API_FIELD = "apiField";
+        protected static final String PIPELINE_APPLICATION_FIELD = "applicationField";
 
         private final EndpointConfiguration endpointConfiguration;
+        private final boolean reAddPropertyToConfigAfterInit;
 
-        Factory(EndpointConfiguration endpointConfiguration) {
+        protected Factory(EndpointConfiguration endpointConfiguration) {
+            this(endpointConfiguration, false);
+        }
+
+        /**
+         * Initializes a factory.
+         * @param endpointConfiguration the Management API endpoint configuration.
+         * @param reAddPropertyToConfigAfterInit indicates whether the properties read from the configuration through
+         *                                       {@link #create(Map, String, Map)} must re-add those properties. This
+         *                                       allows subclasses to reuse the same properties for their own
+         *                                       initialization.
+         */
+        protected Factory(EndpointConfiguration endpointConfiguration, boolean reAddPropertyToConfigAfterInit) {
             this.endpointConfiguration = endpointConfiguration;
+            this.reAddPropertyToConfigAfterInit = reAddPropertyToConfigAfterInit;
         }
 
         @Override
-        public EnhanceGraviteeAttributionProcessor create(Map<String, Processor.Factory> factories, String tag, Map<String, Object> config) throws Exception {
-            return new EnhanceGraviteeAttributionProcessor(tag, endpointConfiguration,
-                    readStringProperty(TYPE, tag, config, "apiField"),
-                    readStringProperty(TYPE, tag, config, "applicationField")
-            );
+        public final EnhanceGraviteeAttributionProcessor create(Map<String, Processor.Factory> factories, String tag, Map<String, Object> config) throws Exception {
+            return new EnhanceGraviteeAttributionProcessor(tag, initializeDocumentEnhancers(tag, config));
+        }
+
+        /**
+         * Initializes the {@link IngestDocumentEnhancer}s used by the {@link EnhanceGraviteeAttributionProcessor} during
+         * Ingest document enhancement. If the {@link #reAddPropertyToConfigAfterInit} attribute has been set to
+         * {@code true} (default to {@code false}), properties read from configuration will be re-added to configuration.
+         * @param tag the processor tag.
+         * @param config the configuration.
+         * @return the list of enhancers to be used by processor.
+         * @throws Exception in case of initialization error.
+         */
+        protected List<IngestDocumentEnhancer> initializeDocumentEnhancers(String tag, Map<String, Object> config) throws Exception {
+            List<IngestDocumentEnhancer> enhancers = new ArrayList<>();
+
+            final String apiField = readStringProperty(TYPE, tag, config, PIPELINE_API_FIELD);
+            enhancers.add(new ResourceNameIngestDocumentEnhancer(endpointConfiguration, apiField, "api-name", "/apis", "name"));
+            if (reAddPropertyToConfigAfterInit) {
+                config.put(PIPELINE_API_FIELD, apiField);
+            }
+
+            final String applicationField = readStringProperty(TYPE, tag, config, PIPELINE_APPLICATION_FIELD);
+            enhancers.add(new ResourceNameIngestDocumentEnhancer(endpointConfiguration, applicationField, "application-name", "/applications", "name"));
+            if (reAddPropertyToConfigAfterInit) {
+                config.put(PIPELINE_APPLICATION_FIELD, applicationField);
+            }
+            return enhancers;
         }
     }
+
 }

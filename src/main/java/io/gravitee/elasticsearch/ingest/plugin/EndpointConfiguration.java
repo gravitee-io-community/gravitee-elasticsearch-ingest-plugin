@@ -15,8 +15,8 @@
  */
 package io.gravitee.elasticsearch.ingest.plugin;
 
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 /**
  * @author Azize ELAMRANI (azize.elamrani at graviteesource.com)
@@ -24,60 +24,42 @@ import java.util.Map;
  */
 public class EndpointConfiguration {
 
-    private String endpoint, username, password;
-    private int cacheMaxElement;
-    private long cacheTtl;
-    private List<String> headers;
+    private final String endpoint, username, password;
+    private final int cacheMaxElement;
+    private final long cacheTtl;
+    private final List<String> headers;
 
-    private EndpointConfiguration() {
+    private EndpointConfiguration(String endpoint, String username, String password, int cacheMaxElement, long cacheTtl, List<String> headers) {
+        this.endpoint = endpoint;
+        this.username = username;
+        this.password = password;
+        this.cacheMaxElement = cacheMaxElement;
+        this.cacheTtl = cacheTtl;
+        this.headers = headers != null ? Collections.unmodifiableList(headers) : Collections.emptyList();
     }
 
     public String getEndpoint() {
         return endpoint;
     }
 
-    public void setEndpoint(String endpoint) {
-        this.endpoint = endpoint;
-    }
-
     public String getUsername() {
         return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
     }
 
     public String getPassword() {
         return password;
     }
 
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
     public int getCacheMaxElement() {
         return cacheMaxElement;
-    }
-
-    public void setCacheMaxElement(int cacheMaxElement) {
-        this.cacheMaxElement = cacheMaxElement;
     }
 
     public long getCacheTtl() {
         return cacheTtl;
     }
 
-    public void setCacheTtl(long cacheTtl) {
-        this.cacheTtl = cacheTtl;
-    }
-
     public List<String> getHeaders() {
         return headers;
-    }
-
-    public void setHeaders(List<String> headers) {
-        this.headers = headers;
     }
 
     public static class Builder {
@@ -86,7 +68,7 @@ public class EndpointConfiguration {
         private long cacheTtl;
         private List<String> headers;
 
-        Builder(String endpoint) {
+        public Builder(String endpoint) {
             this.endpoint = endpoint;
         }
 
@@ -116,14 +98,7 @@ public class EndpointConfiguration {
         }
 
         public EndpointConfiguration build() {
-            final EndpointConfiguration endpointConfiguration = new EndpointConfiguration();
-            endpointConfiguration.setEndpoint(endpoint);
-            endpointConfiguration.setUsername(username);
-            endpointConfiguration.setPassword(password);
-            endpointConfiguration.setCacheMaxElement(cacheMaxElement);
-            endpointConfiguration.setCacheTtl(cacheTtl);
-            endpointConfiguration.setHeaders(headers);
-            return endpointConfiguration;
+            return new EndpointConfiguration(endpoint, username, password, cacheMaxElement, cacheTtl, headers);
         }
     }
 }
