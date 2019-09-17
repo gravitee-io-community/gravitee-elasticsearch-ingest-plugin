@@ -86,8 +86,16 @@ class ResourceNameIngestDocumentEnhancer implements IngestDocumentEnhancer {
     }
 
     private String initCachedEnhancedFieldValue(final String fieldValue) {
-        String name = getEnhancedFieldValue(fieldValue);
-        cache.put(fieldValue, name);
+        final String name = getEnhancedFieldValue(fieldValue);
+        if ("".equals(name)) {
+            // Do not erase the value if the new value is empty
+            // Empty value means that the enhancement failed
+            if (cache.get(fieldValue) == null) {
+                cache.put(fieldValue, name);
+            }
+        } else {
+            cache.put(fieldValue, name);
+        }
         return name;
     }
 
