@@ -36,7 +36,7 @@
         <elasticsearch.version>6.8.1</elasticsearch.version>
         <httpclient.version>4.5.7</httpclient.version>
         <wiremock.version>2.21.0</wiremock.version>
-        <jackson.version>2.8.11</jackson.version>
+        <jackson.version>2.10.0.pr3</jackson.version>
     </properties>
 
     <dependencies>
