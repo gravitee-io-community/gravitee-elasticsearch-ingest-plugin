@@ -24,13 +24,13 @@
     <parent>
         <groupId>io.gravitee</groupId>
         <artifactId>gravitee-parent</artifactId>
-        <version>16</version>
+        <version>17</version>
     </parent>
 
     <groupId>io.gravitee.elasticsearch.ingest.plugin</groupId>
     <artifactId>gravitee-elasticsearch-ingest-plugin</artifactId>
     <name>Gravitee.io - ElasticSearch ingest plugin</name>
-    <version>1.0.4</version>
+    <version>1.0.5-SNAPSHOT</version>
 
     <properties>
         <elasticsearch.version>6.8.1</elasticsearch.version>
