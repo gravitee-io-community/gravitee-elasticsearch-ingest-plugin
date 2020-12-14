@@ -33,9 +33,9 @@
     <version>1.1.0-SNAPSHOT</version>
 
     <properties>
-        <elasticsearch.version>6.8.1</elasticsearch.version>
-        <httpclient.version>4.5.7</httpclient.version>
-        <wiremock.version>2.21.0</wiremock.version>
+        <elasticsearch.version>7.10.0</elasticsearch.version>
+        <httpclient.version>4.5.13</httpclient.version>
+        <wiremock.version>2.27.2</wiremock.version>
         <jackson.version>2.8.11</jackson.version>
     </properties>
 
@@ -91,6 +91,12 @@
             <artifactId>wiremock</artifactId>
             <version>${wiremock.version}</version>
             <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>jackson-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 

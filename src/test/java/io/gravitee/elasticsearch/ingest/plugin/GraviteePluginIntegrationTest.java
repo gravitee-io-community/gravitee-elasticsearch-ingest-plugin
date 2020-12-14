@@ -20,7 +20,10 @@ import com.github.tomakehurst.wiremock.junit.WireMockRule;
 import io.gravitee.elasticsearch.ingest.plugin.EnhanceGraviteeAttributionProcessor.Factory;
 import org.elasticsearch.action.admin.cluster.node.info.NodeInfo;
 import org.elasticsearch.action.admin.cluster.node.info.NodesInfoResponse;
+import org.elasticsearch.action.admin.cluster.node.info.PluginsAndModules;
 import org.elasticsearch.ingest.IngestDocument;
+import org.elasticsearch.ingest.IngestInfo;
+import org.elasticsearch.ingest.Processor;
 import org.elasticsearch.ingest.RandomDocumentPicks;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.PluginInfo;
@@ -28,12 +31,14 @@ import org.elasticsearch.test.ESIntegTestCase;
 import org.junit.Before;
 import org.junit.ClassRule;
 
+import java.io.InputStream;
 import java.util.*;
 
 import static com.carrotsearch.randomizedtesting.RandomizedTest.randomAsciiAlphanumOfLength;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
+import static java.util.Collections.emptyMap;
 import static java.util.Collections.singleton;
 import static org.hamcrest.Matchers.*;
 
@@ -46,7 +51,7 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
     @ClassRule
     public static final WireMockRule wireMockRule = new WireMockRule(wireMockConfig().dynamicPort());
 
-    private EnhanceGraviteeAttributionProcessor processor;
+    private Processor processor;
 
     @Override
     protected Collection<Class<? extends Plugin>> nodePlugins() {
@@ -62,14 +67,14 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         config.put("apiField", "api");
         config.put("applicationField", "application");
         final Factory factory = new Factory(new EndpointConfiguration.Builder(wireMockRule.baseUrl()).build());
-        processor = factory.create(Collections.emptyMap(), tag, config);
+        processor = factory.create(emptyMap(), tag, "", config);
     }
 
     public void testPluginIsLoaded() {
-        NodesInfoResponse response = client().admin().cluster().prepareNodesInfo().setPlugins(true).get();
+        NodesInfoResponse response = client().admin().cluster().prepareNodesInfo().get();
         for (NodeInfo nodeInfo : response.getNodes()) {
             boolean pluginFound = false;
-            for (PluginInfo pluginInfo : nodeInfo.getPlugins().getPluginInfos()) {
+            for (PluginInfo pluginInfo : nodeInfo.getInfo(PluginsAndModules.class).getPluginInfos()) {
                 if (pluginInfo.getName().equals(IngestGraviteePlugin.class.getName())) {
                     pluginFound = true;
                     break;
@@ -79,7 +84,7 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         }
     }
 
-    public void testThatProcessorFillsEnhancedFieldsWhenOriginalAreNotPresent() {
+    public void testThatProcessorFillsEnhancedFieldsWhenOriginalAreNotPresent() throws Exception {
         final Map<String, Object> document = new HashMap<>();
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
         processor.execute(ingestDocument);
@@ -91,7 +96,7 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         assertThat(data.get("application-name"), is(""));
     }
 
-    public void testThatProcessorNotWorks() {
+    public void testThatProcessorNotWorks() throws Exception {
         stubFor(WireMock.get(urlEqualTo("/apis/123"))
                 .willReturn(aResponse()
                         .withStatus(404)));
@@ -112,7 +117,7 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         assertThat(data.get("application-name"), is(""));
     }
 
-    public void testThatProcessorWorks() {
+    public void testThatProcessorWorks() throws Exception {
         stubFor(WireMock.get(urlEqualTo("/apis/123"))
                 .willReturn(aResponse()
                         .withStatus(200)
@@ -138,7 +143,7 @@ public class GraviteePluginIntegrationTest extends ESIntegTestCase {
         verify(1, getRequestedFor(urlEqualTo("/applications/321")));
     }
 
-    public void testThatProcessorCachingWorks() {
+    public void testThatProcessorCachingWorks() throws Exception {
         stubFor(WireMock.get(urlEqualTo("/apis/123"))
                 .willReturn(aResponse()
                         .withStatus(200)

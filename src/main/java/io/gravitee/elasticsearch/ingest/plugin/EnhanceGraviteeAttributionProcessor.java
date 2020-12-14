@@ -39,7 +39,7 @@ public class EnhanceGraviteeAttributionProcessor extends AbstractProcessor {
     private final Collection<IngestDocumentEnhancer> documentEnhancers;
 
     EnhanceGraviteeAttributionProcessor(String tag, Collection<IngestDocumentEnhancer> documentEnhancers) {
-        super(tag);
+        super(tag, "");
         if (documentEnhancers == null || documentEnhancers.isEmpty()) {
             throw new IllegalStateException("Cannot initialize processor without document enhancer");
         }
@@ -61,8 +61,7 @@ public class EnhanceGraviteeAttributionProcessor extends AbstractProcessor {
      * A {@link EnhanceGraviteeAttributionProcessor} factory. By default, it initializes 2 {@link IngestDocumentEnhancer}s
      * to add API and application names in document.
      *
-     * This factory is extensible to initialize more {@link IngestDocumentEnhancer}s than those defined by default, or
-     * to completely replace the default ones, using {@link #initializeDocumentEnhancers(String, Map)}.
+     * This factory is extensible to initialize more {@link IngestDocumentEnhancer}s than those defined by default.
      */
     public static class Factory implements Processor.Factory {
 
@@ -80,18 +79,13 @@ public class EnhanceGraviteeAttributionProcessor extends AbstractProcessor {
          * Initializes a factory.
          * @param endpointConfiguration the Management API endpoint configuration.
          * @param reAddPropertyToConfigAfterInit indicates whether the properties read from the configuration through
-         *                                       {@link #create(Map, String, Map)} must re-add those properties. This
+         *                                       {@link #create(Map, String, String, Map)} must re-add those properties. This
          *                                       allows subclasses to reuse the same properties for their own
          *                                       initialization.
          */
         protected Factory(EndpointConfiguration endpointConfiguration, boolean reAddPropertyToConfigAfterInit) {
             this.endpointConfiguration = endpointConfiguration;
             this.reAddPropertyToConfigAfterInit = reAddPropertyToConfigAfterInit;
-        }
-
-        @Override
-        public final EnhanceGraviteeAttributionProcessor create(Map<String, Processor.Factory> factories, String tag, Map<String, Object> config) throws Exception {
-            return new EnhanceGraviteeAttributionProcessor(tag, initializeDocumentEnhancers(tag, config));
         }
 
         /**
@@ -103,7 +97,8 @@ public class EnhanceGraviteeAttributionProcessor extends AbstractProcessor {
          * @return the list of enhancers to be used by processor.
          * @throws Exception in case of initialization error.
          */
-        protected List<IngestDocumentEnhancer> initializeDocumentEnhancers(String tag, Map<String, Object> config) throws Exception {
+        @Override
+        public Processor create(Map<String, Processor.Factory> processorFactories, String tag, String description, Map<String, Object> config) throws Exception {
             List<IngestDocumentEnhancer> enhancers = new ArrayList<>();
 
             final String apiField = readStringProperty(TYPE, tag, config, PIPELINE_API_FIELD);
@@ -117,7 +112,7 @@ public class EnhanceGraviteeAttributionProcessor extends AbstractProcessor {
             if (reAddPropertyToConfigAfterInit) {
                 config.put(PIPELINE_APPLICATION_FIELD, applicationField);
             }
-            return enhancers;
+            return new EnhanceGraviteeAttributionProcessor(tag, enhancers);
         }
     }
 
